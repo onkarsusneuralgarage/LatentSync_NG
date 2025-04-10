@@ -1,4 +1,5 @@
-<<<<<<< HEAD
+
+This is the editable installation for LatentSync Repository;
 
 Step1: download all the ultilites by running the script setup_env.sh
 
