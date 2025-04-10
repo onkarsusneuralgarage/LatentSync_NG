@@ -1,3 +1,1 @@
 # LatentSync_NG
-
-Hi
