@@ -41,6 +41,12 @@ from eval.syncnet_detect import SyncNetDetector
 from eval.eval_sync_conf import syncnet_eval
 import lpips
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+# For specific messages:
+warnings.filterwarnings("ignore", message=".*gradient_checkpointing.*")
+
 
 logger = get_logger(__name__)
 
@@ -81,7 +87,7 @@ def main(config):
     noise_scheduler = DDIMScheduler.from_pretrained("configs")
 
     # ""stabilityai/sd-vae-ft-mse""
-    vae = AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2", torch_dtype=torch.float16, subfolder="vae")
+    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
     vae.config.scaling_factor = 0.18215
     vae.config.shift_factor = 0
 
@@ -97,8 +103,10 @@ def main(config):
 
     # syncnet_detector = SyncNetDetector(device=device, detect_results_dir="detect_results")
 
-    if config.model.cross_attention_dim == 768:
-        whisper_model_path = "checkpoints/whisper/small.pt"
+
+
+    if config.model.cross_attention_dim == 1280:
+        whisper_model_path = "/home/tmpuser/onkar/LatentSync/checkpoints/large-v3.pt"
     elif config.model.cross_attention_dim == 384:
         whisper_model_path = "checkpoints/whisper/tiny.pt"
     else:
@@ -264,13 +272,17 @@ def main(config):
 
                         with torch.no_grad():
                             audio_feat = audio_encoder.audio2feat(video_path)
+                            # print(audio_feat.shape)
                         audio_embeds = audio_encoder.crop_overlap_audio_window(audio_feat, start_idx)
+                        # print(audio_embeds.shape)
                         audio_embeds_list.append(audio_embeds)
                 except Exception as e:
                     logger.info(f"{type(e).__name__} - {e} - {video_path}")
                     continue
+                
                 audio_embeds = torch.stack(audio_embeds_list)  # (B, 16, 50, 384)
                 audio_embeds = audio_embeds.to(device, dtype=torch.float16)
+                # print(audio_embeds.shape)
             else:
                 audio_embeds = None
 

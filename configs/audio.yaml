@@ -1,5 +1,5 @@
 audio:
-  num_mels: 80 # Number of mel-spectrogram channels and local conditioning dimensionality
+  num_mels: 128 # Number of mel-spectrogram channels and local conditioning dimensionality
   rescale: true # Whether to rescale audio prior to preprocessing
   rescaling_max: 0.9 # Rescaling value
   use_lws:

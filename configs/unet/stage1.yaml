@@ -1,8 +1,8 @@
 data:
   syncnet_config_path: configs/syncnet/syncnet_16_pixel_attn.yaml
   train_output_dir: debug/unet
-  train_fileslist: ""
-  train_data_dir: /home/tmpuser/data/Ektai-new/trainset-ekitai9
+  train_fileslist: /home/tmpuser/onkar/LatentSync/tran_files_clean.txt
+  train_data_dir: ""
   audio_embeds_cache_dir: /home/tmpuser/onkar/LatentSync/AudioCache/wisper
   audio_mel_cache_dir: /home/tmpuser/onkar/LatentSync/AudioMelCache_EKITAI
 
@@ -19,7 +19,7 @@ data:
   audio_feat_length: [2, 2]
 
 ckpt:
-  resume_ckpt_path: checkpoints/latentsync_unet.pt
+  resume_ckpt_path: /home/tmpuser/onkar/LatentSync/checkpoints/latentsync_unet.pt
   save_ckpt_steps: 10000
 
 run:
@@ -52,7 +52,7 @@ model:
   attention_head_dim: 8
   block_out_channels: [320, 640, 1280, 1280]
   center_input_sample: false
-  cross_attention_dim: 384
+  cross_attention_dim: 1280
   down_block_types:
     [
       "CrossAttnDownBlock3D",
