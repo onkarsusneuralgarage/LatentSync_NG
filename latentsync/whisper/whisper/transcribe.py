@@ -7,15 +7,15 @@ import numpy as np
 import torch
 import tqdm
 
-from .audio import SAMPLE_RATE, N_FRAMES, HOP_LENGTH, pad_or_trim, log_mel_spectrogram
+from .audio import SAMPLE_RATE, N_FRAMES, HOP_LENGTH, pad_or_trim, log_mel_spectrogram, load_audio
 from .decoding import DecodingOptions, DecodingResult
 from .tokenizer import LANGUAGES, TO_LANGUAGE_CODE, get_tokenizer
 from .utils import exact_div, format_timestamp, optional_int, optional_float, str2bool, write_txt, write_vtt, write_srt
-
+from transformers import  AutoProcessor
 if TYPE_CHECKING:
     from .model import Whisper
 
-
+process = AutoProcessor.from_pretrained("openai/whisper-large-v3")
 def transcribe(
         model: "Whisper",
         audio: Union[str, np.ndarray, torch.Tensor],
@@ -29,48 +29,6 @@ def transcribe(
         force_extraction: bool = False,
         **decode_options,
 ):
-    """
-    Transcribe an audio file using Whisper
-
-    Parameters
-    ----------
-    model: Whisper
-        The Whisper model instance
-
-    audio: Union[str, np.ndarray, torch.Tensor]
-        The path to the audio file to open, or the audio waveform
-
-    verbose: bool
-        Whether to display the text being decoded to the console. If True, displays all the details,
-        If False, displays minimal details. If None, does not display anything
-
-    temperature: Union[float, Tuple[float, ...]]
-        Temperature for sampling. It can be a tuple of temperatures, which will be successfully used
-        upon failures according to either `compression_ratio_threshold` or `logprob_threshold`.
-
-    compression_ratio_threshold: float
-        If the gzip compression ratio is above this value, treat as failed
-
-    logprob_threshold: float
-        If the average log probability over sampled tokens is below this value, treat as failed
-
-    no_speech_threshold: float
-        If the no_speech probability is higher than this value AND the average log probability
-        over sampled tokens is below `logprob_threshold`, consider the segment as silent
-
-    condition_on_previous_text: bool
-        if True, the previous output of the model is provided as a prompt for the next window;
-        disabling may make the text inconsistent across windows, but the model becomes less prone to
-        getting stuck in a failure loop, such as repetition looping or timestamps going out of sync.
-
-    decode_options: dict
-        Keyword arguments to construct `DecodingOptions` instances
-
-    Returns
-    -------
-    A dictionary containing the resulting text ("text") and segment-level details ("segments"), and
-    the spoken language ("language"), which is detected when `decode_options["language"]` is None.
-    """
     dtype = torch.float16 if decode_options.get("fp16", True) else torch.float32
     if model.device == torch.device("cpu"):
         if torch.cuda.is_available():
@@ -82,8 +40,20 @@ def transcribe(
     if dtype == torch.float32:
         decode_options["fp16"] = False
 
-    mel = log_mel_spectrogram(audio)
-   
+    if not torch.is_tensor(audio):
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+        audio = torch.from_numpy(audio)
+    
+    # mel = log_mel_spectrogram(audio)
+    
+    inputs = process(
+            audio,
+            sampling_rate=16000,
+            return_tensors="pt"
+        )
+    mel = inputs.input_features
+
     all_segments = []
     def add_segment(
             *, start: float, end: float, encoder_embeddings
@@ -112,8 +82,9 @@ def transcribe(
                 segment = segment.unsqueeze(0)
             if dtype == torch.float16:
                 segment = segment.half()
+            # print(segment.shape)
             audio_features, embeddings  = model.encoder(segment, include_embeddings = True)
-            
+            # print(embeddings.shape)
             encoder_embeddings = embeddings
             #print(f"encoder_embeddings shape {encoder_embeddings.shape}")
             add_segment(
@@ -124,7 +95,6 @@ def transcribe(
                 encoder_embeddings=encoder_embeddings,
             )
             seek+=sample_skip
-    
     return dict(segments=all_segments)
 
 

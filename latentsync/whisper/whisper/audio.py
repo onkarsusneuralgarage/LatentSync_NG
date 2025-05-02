@@ -12,7 +12,7 @@ from .utils import exact_div
 # hard-coded audio hyperparameters
 SAMPLE_RATE = 16000
 N_FFT = 400
-N_MELS = 80
+N_MELS = 128
 HOP_LENGTH = 160
 CHUNK_LENGTH = 30
 N_SAMPLES = CHUNK_LENGTH * SAMPLE_RATE  # 480000: number of samples in a chunk
