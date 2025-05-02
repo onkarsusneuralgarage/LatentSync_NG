@@ -98,8 +98,10 @@ def get_up_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     use_inflated_groupnorm=False,
+
     use_motion_module=None,
     motion_module_type=None,
+    
     motion_module_kwargs=None,
     add_audio_layer=False,
 ):

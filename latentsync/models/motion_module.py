@@ -53,6 +53,7 @@ class VanillaTemporalModule(nn.Module):
 
         self.temporal_transformer = TemporalTransformer3DModel(
             in_channels=in_channels,
+
             num_attention_heads=num_attention_heads,
             attention_head_dim=in_channels // num_attention_heads // temporal_attention_dim_div,
             num_layers=num_transformer_block,
@@ -123,6 +124,7 @@ class TemporalTransformer3DModel(nn.Module):
         )
         self.proj_out = nn.Linear(inner_dim, in_channels)
 
+
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
@@ -160,6 +162,7 @@ class TemporalTransformerBlock(nn.Module):
         attention_block_types=(
             "Temporal_Self",
             "Temporal_Self",
+
         ),
         dropout=0.0,
         norm_num_groups=32,
@@ -183,6 +186,7 @@ class TemporalTransformerBlock(nn.Module):
                     cross_attention_dim=cross_attention_dim if block_name.endswith("_Cross") else None,
                     query_dim=dim,
                     heads=num_attention_heads,
+                    
                     dim_head=attention_head_dim,
                     dropout=dropout,
                     bias=attention_bias,
