@@ -28,8 +28,10 @@ https://stackoverflow.com/questions/23853632/which-kind-of-interpolation-best-fo
 """
 
 
-def load_fixed_mask(resolution: int, mask_image_path="latentsync/utils/mask.png") -> torch.Tensor:
+def load_fixed_mask(resolution, mask_image_path="mask.png") -> torch.Tensor:
+    # print(mask_image_path)
     mask_image = cv2.imread(mask_image_path)
+    # print(mask_image.shape)
     mask_image = cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB)
     mask_image = cv2.resize(mask_image, (resolution, resolution), interpolation=cv2.INTER_LANCZOS4) / 255.0
     mask_image = rearrange(torch.from_numpy(mask_image), "h w c -> c h w")
@@ -37,16 +39,17 @@ def load_fixed_mask(resolution: int, mask_image_path="latentsync/utils/mask.png"
 
 
 class ImageProcessor:
-    def __init__(self, resolution: int = 512, mask: str = "fix_mask", device: str = "cpu", mask_image=None):
+    def __init__(self, resolution: int = 512, mask: str = "fix_mask", device: str = "cuda", mask_image=None):
         self.resolution = resolution
         self.resize = transforms.Resize(
             (resolution, resolution), interpolation=transforms.InterpolationMode.BILINEAR, antialias=True
         )
-        self.normalize = transforms.Normalize([0.5], [0.5], inplace=True)
+        self.normalize = transforms.Normalize([0.5,0.5,0.5], [0.5,0.5,0.5], inplace=True)
         self.mask = mask
 
         if mask in ["mouth", "face", "eye"]:
             self.face_mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=True)  # Process single image
+            self.fa = None
         if mask == "fix_mask":
             self.face_mesh = None
             self.smoother = laplacianSmooth()
@@ -81,8 +84,14 @@ class ImageProcessor:
     def preprocess_one_masked_image(self, image: torch.Tensor) -> np.ndarray:
         image = self.resize(image)
 
+        # print(image.shape)
+
+        imaget = image
+
+        # imaget = rearrange(torch.Tensor(image).type(torch.uint8), "h w c ->  c h w")
+
         if self.mask == "mouth" or self.mask == "face":
-            landmark_coordinates = self.detect_facial_landmarks(image)
+            landmark_coordinates = self.detect_facial_landmarks(rearrange(image, "c h w -> h w c").numpy())
             if self.mask == "mouth":
                 surround_landmarks = mouth_surround_landmarks
             else:
@@ -108,8 +117,10 @@ class ImageProcessor:
         else:
             raise ValueError("Invalid mask type")
 
-        image = image.to(dtype=torch.float32)
-        pixel_values = self.normalize(image / 255.0)
+        # print(mask.shape, mask.min(), mask.max())
+        imaget = imaget.to(dtype=torch.float32)
+        pixel_values = self.normalize(imaget / 255.0)
+        # print(pixel_values.mean(), pixel_values.std())
         masked_pixel_values = pixel_values * mask
         mask = 1 - mask
 
@@ -143,6 +154,7 @@ class ImageProcessor:
         return face, box, affine_matrix
 
     def preprocess_fixed_mask_image(self, image: torch.Tensor, affine_transform=False):
+        # print(self.mask_image.shape)
         if affine_transform:
             image, _, _ = self.affine_transform(image)
         else:

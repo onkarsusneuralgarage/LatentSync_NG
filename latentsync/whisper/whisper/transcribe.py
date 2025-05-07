@@ -15,7 +15,7 @@ from transformers import  AutoProcessor
 if TYPE_CHECKING:
     from .model import Whisper
 
-process = AutoProcessor.from_pretrained("openai/whisper-large-v3")
+process = AutoProcessor.from_pretrained("openai/whisper-large-v2")
 def transcribe(
         model: "Whisper",
         audio: Union[str, np.ndarray, torch.Tensor],

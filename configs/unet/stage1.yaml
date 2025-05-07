@@ -8,10 +8,10 @@ data:
 
   val_video_path: assets/demo1_video.mp4
   val_audio_path: assets/demo1_audio.wav
-  batch_size: 4 # 24
+  batch_size: 6 # 24
   num_workers: 12 # 12
   num_frames: 16
-  resolution: 512
+  resolution: 256
   mask: fix_mask
   mask_image_path: latentsync/utils/mask.png
   audio_sample_rate: 16000
