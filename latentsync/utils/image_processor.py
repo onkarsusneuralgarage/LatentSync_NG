@@ -1,16 +1,4 @@
-# Copyright (c) 2024 Bytedance Ltd. and/or its affiliates
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
 
 from torchvision import transforms
 import cv2
@@ -22,10 +10,6 @@ from typing import Union
 from .affine_transform import AlignRestore, laplacianSmooth
 import face_alignment
 
-"""
-If you are enlarging the image, you should prefer to use INTER_LINEAR or INTER_CUBIC interpolation. If you are shrinking the image, you should prefer to use INTER_AREA interpolation.
-https://stackoverflow.com/questions/23853632/which-kind-of-interpolation-best-for-resizing-image
-"""
 
 
 def load_fixed_mask(resolution, mask_image_path="mask.png") -> torch.Tensor:
@@ -39,7 +23,7 @@ def load_fixed_mask(resolution, mask_image_path="mask.png") -> torch.Tensor:
 
 
 class ImageProcessor:
-    def __init__(self, resolution: int = 512, mask: str = "fix_mask", device: str = "cuda", mask_image=None):
+    def __init__(self, resolution: int = 512, mask: str = "fix_mask", device: str = "cpu", mask_image=None):
         self.resolution = resolution
         self.resize = transforms.Resize(
             (resolution, resolution), interpolation=transforms.InterpolationMode.BILINEAR, antialias=True
@@ -90,24 +74,107 @@ class ImageProcessor:
 
         # imaget = rearrange(torch.Tensor(image).type(torch.uint8), "h w c ->  c h w")
 
-        if self.mask == "mouth" or self.mask == "face":
-            landmark_coordinates = self.detect_facial_landmarks(rearrange(image, "c h w -> h w c").numpy())
-            if self.mask == "mouth":
-                surround_landmarks = mouth_surround_landmarks
-            else:
-                surround_landmarks = face_surround_landmarks
+        # if self.mask == "mouth" or self.mask == "face":
+        #     landmark_coordinates = self.detect_facial_landmarks(rearrange(image, "c h w -> h w c").numpy())
+        #     if self.mask == "mouth":
+        #         surround_landmarks = mouth_surround_landmarks
+        #     else:
+        #         surround_landmarks = face_surround_landmarks
 
-            points = [landmark_coordinates[landmark] for landmark in surround_landmarks]
-            points = np.array(points)
-            mask = np.ones((self.resolution, self.resolution))
-            mask = cv2.fillPoly(mask, pts=[points], color=(0, 0, 0))
-            mask = torch.from_numpy(mask)
-            mask = mask.unsqueeze(0)
+        #     points = [landmark_coordinates[landmark] for landmark in surround_landmarks]
+        #     points = np.array(points)
+        #     mask = np.ones((self.resolution, self.resolution))
+        #     mask = cv2.fillPoly(mask, pts=[points], color=(0, 0, 0))
+        #     mask = torch.from_numpy(mask)
+        #     mask = mask.unsqueeze(0)
+
+        raw_mask = cv2.imread("latentsync/utils/mask.png", cv2.IMREAD_GRAYSCALE)
+        binary_mask = (raw_mask < 128).astype(np.uint8)  # Assume black = 1
+
+        # Find bounding box of non-zero region
+        ys, xs = np.where(binary_mask > 0)
+        crop_x1, crop_x2 = xs.min(), xs.max()
+        crop_y1, crop_y2 = ys.min(), ys.max()
+        cropped_mask = binary_mask[crop_y1:crop_y2, crop_x1:crop_x2]
+
+        if self.mask == "mouth" or self.mask == "face":
+            # Detect landmarks
+            landmark_coordinates = self.detect_facial_landmarks(rearrange(image, "c h w -> h w c").numpy())
+
+            # Use mouth region
+            surround_landmarks = mouth_surround_landmarks if self.mask == "mouth" else face_surround_landmarks
+            points = np.array([landmark_coordinates[l] for l in surround_landmarks], dtype=np.float32)
+
+            # Compute rotated bounding box
+            rect = cv2.minAreaRect(points)
+            (cx, cy), (w, h), angle = rect
+
+            # Resize cropped mask to match region size
+            resized_mask = cv2.resize(cropped_mask, (int(w), int(h)), interpolation=cv2.INTER_NEAREST)
+
+            # Rotate resized mask
+            center = (resized_mask.shape[1] // 2, resized_mask.shape[0] // 2)
+            rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
+            rotated_mask = cv2.warpAffine(resized_mask, rot_mat, (resized_mask.shape[1], resized_mask.shape[0]), flags=cv2.INTER_NEAREST)
+            center = (rotated_mask.shape[1] // 2, rotated_mask.shape[0] // 2)
+            rot_mat_90 = cv2.getRotationMatrix2D(center, -90, 1.0)
+            rotated_mask = cv2.warpAffine(rotated_mask, rot_mat_90, (rotated_mask.shape[1], rotated_mask.shape[0]), flags=cv2.INTER_NEAREST)
+            cv2.imwrite("rotated_mask.png", rotated_mask * 255)
+
+            # Create canvas and paste
+            canvas = np.ones((self.resolution, self.resolution), dtype=np.uint8)
+            top_left_x = int(cx - rotated_mask.shape[1] / 2)
+            top_left_y = int(cy - rotated_mask.shape[0] / 2)
+
+            for i in range(rotated_mask.shape[0]):
+                for j in range(rotated_mask.shape[1]):
+                    y = top_left_y + i
+                    x = top_left_x + j
+                    if 0 <= y < self.resolution and 0 <= x < self.resolution:
+                        if rotated_mask[i, j] > 0:
+                            canvas[y, x] = 0  # Apply mask where input was black
+
+            # Convert to torch tensor
+            mask = torch.from_numpy(canvas).unsqueeze(0).float()
+
+        # if self.mask == "mouth" or self.mask == "face":
+        #     # Get landmarks
+        #     landmark_coordinates = self.detect_facial_landmarks(rearrange(image, "c h w -> h w c").numpy())
+        #     if self.mask == "mouth":
+        #         surround_landmarks = mouth_surround_landmarks
+        #     else:
+        #         surround_landmarks = face_surround_landmarks
+
+        #     points = np.array([landmark_coordinates[l] for l in surround_landmarks], dtype=np.float32)
+
+        #     # Get minimum area rectangle
+        #     rect = cv2.minAreaRect(points)  # (center (x,y), (w,h), angle)
+        #     box = cv2.boxPoints(rect)       # Get 4 corner points of the rectangle
+        #     box = np.int0(box)
+
+        #     # Expand the rectangle slightly
+        #     delta_scale = 1.2  # Increase size by 20%
+        #     center, size, angle = rect
+        #     size = (size[0] * delta_scale, size[1] * delta_scale)
+        #     expanded_box = cv2.boxPoints((center, size, angle))
+        #     expanded_box = np.int0(expanded_box)
+
+        #     # Create blank mask
+        #     mask = np.ones((self.resolution, self.resolution), dtype=np.uint8)
+
+        #     # Fill rotated rectangle with 0 (black region)
+        #     mask = cv2.fillConvexPoly(mask, expanded_box, 0)
+
+        #     # Convert to PyTorch tensor
+        #     mask = torch.from_numpy(mask).unsqueeze(0).float()
+
+     
         elif self.mask == "half":
             mask = torch.ones((self.resolution, self.resolution))
             height = mask.shape[0]
             mask[height // 2 :, :] = 0
             mask = mask.unsqueeze(0)
+
         elif self.mask == "eye":
             mask = torch.ones((self.resolution, self.resolution))
             landmark_coordinates = self.detect_facial_landmarks(image)
@@ -169,6 +236,7 @@ class ImageProcessor:
         if images.shape[3] == 3:
             images = rearrange(images, "f h w c -> f c h w")
         if self.mask == "fix_mask":
+            # print("here")
             results = [self.preprocess_fixed_mask_image(image, affine_transform=affine_transform) for image in images]
         else:
             results = [self.preprocess_one_masked_image(image) for image in images]
